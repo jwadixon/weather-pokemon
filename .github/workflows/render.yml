@@ -1,0 +1,44 @@
+name: Render frame
+
+on:
+  schedule:
+    - cron: "40 * * * *"   # every hour at :40 (UTC); the frame collects at :05
+  workflow_dispatch:         # adds a "Run workflow" button for testing
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fonts
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-dejavu-core
+
+      - name: Keep PokéAPI downloads between runs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/weather-pokemon
+          key: pokeapi-${{ github.run_id }}
+          restore-keys: pokeapi-
+
+      - run: pip install requests pillow
+
+      - run: python render_frame.py
+
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          force_orphan: true   # keep only the latest images, no history
