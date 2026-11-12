@@ -353,11 +353,8 @@ def render(weather, cond, mon, sprite, stamp):
     out = " ".join(t.upper() for t in types)
     d.text((x, y), out, font=fit(d, out, "regular", 18, w), fill=BLACK)
 
-    # Bottom-left (x 24-440, y 446+) is left empty: the frame writes its
-    # battery level there. Bottom-right carries the place, time and credit.
-    small = font("regular", 16)
-    right = f"{PLACE.upper()} {stamp}  OPEN-METEO"
-    d.text((WIDTH - 24 - d.textlength(right, font=small), HEIGHT - 30), right, font=small, fill=BLACK)
+    # The bottom strip (y 446+) is left empty: the frame draws its battery
+    # as an HP bar bottom left, and the time it redrew bottom right.
     return to_four_greys(img)          # snap text edges to the four greys
 
 
@@ -408,6 +405,7 @@ INDEX = """<!DOCTYPE html><html lang="en-GB"><meta charset="utf-8">
 <style>body{{font:16px system-ui;margin:24px;background:#eee}}img{{max-width:100%;
 display:block;margin:8px 0 24px;border:12px solid #222;image-rendering:pixelated}}</style>
 <h1>Weather Pokemon frame</h1><p>Rendered {stamp} for {label}.</p>
+<p>Weather data by <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0).</p>
 {images}</html>"""
 
 
