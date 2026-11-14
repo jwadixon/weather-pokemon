@@ -443,6 +443,8 @@ def main():
     images = "".join(f'<p>{n}.png</p><img src="{n}.png" alt="{n}">' for n in names)
     (OUT / "index.html").write_text(INDEX.format(stamp=stamp, label=CONDITIONS[cond][0], images=images))
     (OUT / ".nojekyll").write_text("")
+    # When this picture was made, so the frame can show it (Unix time, seconds).
+    (OUT / "stamp.txt").write_text(str(int(dt.datetime.now(dt.timezone.utc).timestamp())))
 
 
 if __name__ == "__main__":
