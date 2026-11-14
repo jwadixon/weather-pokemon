@@ -1,9 +1,10 @@
 name: Render frame
 
 on:
-  schedule:
-    - cron: "40 * * * *"   # every hour at :40 (UTC); the frame collects at :05
-  workflow_dispatch:         # adds a "Run workflow" button for testing
+  # Started on time by cron-job.org at :50 each hour, 05:50 to 21:50 UK time,
+  # through GitHub's "workflow_dispatch" API. GitHub's own schedule runs up to
+  # an hour late, so it isn't used. The "Run workflow" button still works too.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -37,6 +38,7 @@ jobs:
       - run: python render_frame.py
 
       - name: Publish to GitHub Pages
+        if: hashFiles('site/now.png') != ''   # skipped hours publish nothing
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
