@@ -27,7 +27,16 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from PIL import Image, ImageDraw, ImageFont
+
+# One shared connection that retries a few times (5s, 10s, 20s, 40s apart)
+# if Open-Meteo or PokéAPI has a blip, instead of failing the whole run.
+SESSION = requests.Session()
+SESSION.mount("https://", HTTPAdapter(max_retries=Retry(
+    total=4, backoff_factor=5, status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET"])))
 
 # ---------- Settings you might change ----------
 # These coordinates end up in a public repo, so use the city centre or your
@@ -124,7 +133,7 @@ FONT_FILES = {
 
 # ---------- Data ----------
 def fetch_json(url, **params):
-    r = requests.get(url, params=params, headers=HEADERS, timeout=20)
+    r = SESSION.get(url, params=params, headers=HEADERS, timeout=20)
     r.raise_for_status()
     return r.json()
 
@@ -208,7 +217,7 @@ def get_pokemon(pid):
 def download(url, name):
     path = CACHE / name
     if not path.exists():
-        r = requests.get(url, headers=HEADERS, timeout=30)
+        r = SESSION.get(url, headers=HEADERS, timeout=30)
         r.raise_for_status()
         path.write_bytes(r.content)
     return Image.open(BytesIO(path.read_bytes()))
@@ -413,13 +422,20 @@ def main():
     CACHE.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(exist_ok=True)
 
-    weather = get_weather()
-    c = weather["current"]
-    cond = classify(c["weather_code"], c["wind_speed_10m"], c["is_day"], c["temperature_2m"])
+    try:
+        weather = get_weather()
+        c = weather["current"]
+        cond = classify(c["weather_code"], c["wind_speed_10m"], c["is_day"], c["temperature_2m"])
+        names = ["now"] + [f"alt-{i}" for i in range(1, ALTERNATIVES + 1)]
+        mons = pick_pokemon(cond, len(names))
+    except requests.RequestException as e:
+        # Open-Meteo or PokéAPI is down even after retries. Skip this hour
+        # quietly: the frame keeps last hour's picture and tries again next hour.
+        print(f"::warning::Skipped this hour, a data source didn't answer: {e}")
+        return
     stamp = dt.datetime.now(TZ).strftime("%H:%M")
 
-    names = ["now"] + [f"alt-{i}" for i in range(1, ALTERNATIVES + 1)]
-    for name, mon in zip(names, pick_pokemon(cond, len(names))):
+    for name, mon in zip(names, mons):
         img = render(weather, cond, mon, get_sprite(mon), stamp)
         img.save(OUT / f"{name}.png", optimize=True)
         print(f"{name}.png  {mon['name']}  ({CONDITIONS[cond][0]})")
