@@ -53,6 +53,7 @@ ALTERNATIVES = 3
 OUT = Path("site")
 CACHE = Path.home() / ".cache" / "weather-pokemon"
 API = "https://pokeapi.co/api/v2"
+SITE = "https://jwadixon.github.io/weather-pokemon"   # where the pictures are published
 HEADERS = {"User-Agent": "weather-pokemon-frame/3.0"}
 
 # The four greys. Each sits inside one of the bands ESPHome's Sticky driver
@@ -261,7 +262,19 @@ def get_sprite(mon, box=SPRITE_SIZE):
     return to_four_greys(art, dither=True)
 
 
-def pick_pokemon(cond, count):
+def last_hour_ids():
+    """The Pokemon shown last hour, from the last.json published with them.
+    Empty if it can't be read (first run, or GitHub Pages is slow)."""
+    try:
+        r = SESSION.get(f"{SITE}/last.json", params={"t": dt.datetime.now().timestamp()},
+                        headers=HEADERS, timeout=10)
+        r.raise_for_status()
+        return set(r.json().get("ids", []))
+    except (requests.RequestException, ValueError):
+        return set()
+
+
+def pick_pokemon(cond, count, avoid=frozenset()):
     """Pokemon for this weather, up to No. MAX_DEX. No repeats unless the
     weather has fewer matching Pokemon than pictures (Gen 1 has only three
     Ghost types and no Dark types, so foggy days can repeat one)."""
@@ -269,6 +282,9 @@ def pick_pokemon(cond, count):
     if not pool:
         raise SystemExit(f"No Pokémon up to No. {MAX_DEX} for '{cond}'. Raise MAX_DEX or change its types.")
     random.shuffle(pool)
+    # Last hour's Pokemon go to the back of the queue, so they only come
+    # back if this weather has too few others to fill every picture.
+    pool = [p for p in pool if p not in avoid] + [p for p in pool if p in avoid]
     chosen = []
     for pid in pool + random.choices(pool, k=count):
         if len(chosen) == count:
@@ -427,7 +443,7 @@ def main():
         c = weather["current"]
         cond = classify(c["weather_code"], c["wind_speed_10m"], c["is_day"], c["temperature_2m"])
         names = ["now"] + [f"alt-{i}" for i in range(1, ALTERNATIVES + 1)]
-        mons = pick_pokemon(cond, len(names))
+        mons = pick_pokemon(cond, len(names), avoid=last_hour_ids())
     except requests.RequestException as e:
         # Open-Meteo or PokéAPI is down even after retries. Skip this hour
         # quietly: the frame keeps last hour's picture and tries again next hour.
@@ -443,6 +459,8 @@ def main():
     images = "".join(f'<p>{n}.png</p><img src="{n}.png" alt="{n}">' for n in names)
     (OUT / "index.html").write_text(INDEX.format(stamp=stamp, label=CONDITIONS[cond][0], images=images))
     (OUT / ".nojekyll").write_text("")
+    # Which Pokemon these are, so next hour can pick different ones.
+    (OUT / "last.json").write_text(json.dumps({"ids": [m["id"] for m in mons]}))
     # When this picture was made, so the frame can show it (Unix time, seconds).
     (OUT / "stamp.txt").write_text(str(int(dt.datetime.now(dt.timezone.utc).timestamp())))
 
