@@ -424,6 +424,84 @@ def render_fainted(mon, sprite):
     return to_four_greys(img)
 
 
+# ---------- Kindle (Paperwhite 1, portrait 758 x 1024) ----------
+KINDLE_W, KINDLE_H = 758, 1024
+KINDLE_SPRITE = 416     # largest sprite size; the window is 654 x 436
+
+
+def render_kindle(weather, cond, mon, sprite, stamp):
+    """The same screen laid out for a jailbroken Kindle Paperwhite: portrait,
+    sprite on top, details underneath. Saved as 8-bit greyscale, which is
+    what the Kindle's eips command draws."""
+    img = Image.new("RGB", (KINDLE_W, KINDLE_H), WHITE)
+    d = ImageDraw.Draw(img)
+    label, types, icon_name = CONDITIONS[cond]
+    x0, x1 = 40, KINDLE_W - 40
+    w = x1 - x0
+
+    # Header: place and time, Game Boy menu style
+    d.text((x0, 28), PLACE.upper(), font=font("bold", 26), fill=BLACK)
+    up = f"UPDATED {stamp}"
+    f_up = font("regular", 22)
+    d.text((x1 - d.textlength(up, font=f_up), 32), up, font=f_up, fill=DARK)
+
+    # Sprite window, double border like the frame
+    top, bottom = 76, 536
+    d.rectangle([x0, top, x1, bottom], outline=BLACK, width=5)
+    inner = [x0 + 12, top + 12, x1 - 12, bottom - 12]
+    d.rectangle(inner, outline=LIGHT, width=2)
+    iw, ih = inner[2] - inner[0], inner[3] - inner[1]
+    img.paste(sprite, (inner[0] + (iw - sprite.width) // 2, inner[1] + (ih - sprite.height) // 2))
+    y = bottom + 24
+
+    # Number, name and type badges
+    d.text((x0, y), f"No.{mon['id']:03d}", font=font("regular", 28), fill=BLACK)
+    badge = font("bold", 22)
+    bx = x1
+    for t in reversed(mon["types"]):
+        text = t.upper()
+        tw = d.textlength(text, font=badge)
+        bx -= tw + 28
+        d.rectangle([bx, y, bx + tw + 28, y + 36], outline=BLACK, width=3)
+        d.text((bx + 14, y + 5), text, font=badge, fill=BLACK)
+        bx -= 12
+    y += 40
+    name = mon["name"].upper()
+    d.text((x0, y), name, font=fit(d, name, "bold", 72, w, smallest=40), fill=BLACK)
+    y += 92
+
+    for px in range(x0, x1, 10):                       # dotted rule
+        d.rectangle([px, y, px + 4, y + 3], fill=BLACK)
+    y += 22
+
+    # Weather: big temperature and icon on the left, details on the right
+    cur, day = weather["current"], weather["daily"]
+    temp = f"{round(cur['temperature_2m'])}°"
+    d.text((x0 - 4, y - 14), temp, font=font("bold", 120), fill=BLACK)
+    ic = icon(icon_name, scale=6)
+    tx = x0 + d.textlength(temp, font=font("bold", 120)) + 12
+    img.paste(ic, (int(tx), y + 8))
+
+    rx = x0 + 430
+    line = label.upper()
+    d.text((rx, y + 4), line, font=fit(d, line, "bold", 30, x1 - rx), fill=BLACK)
+    d.text((rx, y + 48), f"HI {round(day['temperature_2m_max'][0])}°  LO {round(day['temperature_2m_min'][0])}°",
+           font=font("regular", 26), fill=BLACK)
+    rain = day["precipitation_probability_max"][0]
+    if rain is not None:
+        d.text((rx, y + 86), f"RAIN {rain}%", font=font("regular", 26), fill=BLACK)
+    y += 150
+
+    # Out today, in a Game Boy text box along the bottom
+    by0, by1 = y, KINDLE_H - 32
+    d.rectangle([x0 - 16, by0, x1 + 16, by1], outline=BLACK, width=6)
+    d.rectangle([x0 - 4, by0 + 12, x1 + 4, by1 - 12], outline=DARK, width=3)
+    d.text((x0 + 20, by0 + 30), "OUT TODAY:", font=font("bold", 26), fill=DARK)
+    out = "  ".join(t.upper() for t in types)
+    d.text((x0 + 20, by0 + 68), out, font=fit(d, out, "bold", 34, w - 40), fill=BLACK)
+    return to_four_greys(img).convert("L")
+
+
 INDEX = """<!DOCTYPE html><html lang="en-GB"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Weather Pokemon frame</title>
@@ -456,7 +534,12 @@ def main():
         img.save(OUT / f"{name}.png", optimize=True)
         print(f"{name}.png  {mon['name']}  ({CONDITIONS[cond][0]})")
 
-    images = "".join(f'<p>{n}.png</p><img src="{n}.png" alt="{n}">' for n in names)
+    # The Kindle shows the same Pokemon as the frame, laid out for its screen.
+    kindle = render_kindle(weather, cond, mons[0], get_sprite(mons[0], box=KINDLE_SPRITE), stamp)
+    kindle.save(OUT / "kindle.png", optimize=True)
+    print(f"kindle.png  {mons[0]['name']}")
+
+    images = "".join(f'<p>{n}.png</p><img src="{n}.png" alt="{n}">' for n in names + ["kindle"])
     (OUT / "index.html").write_text(INDEX.format(stamp=stamp, label=CONDITIONS[cond][0], images=images))
     (OUT / ".nojekyll").write_text("")
     # Which Pokemon these are, so next hour can pick different ones.
