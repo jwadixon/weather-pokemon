@@ -535,9 +535,13 @@ def main():
         print(f"{name}.png  {mon['name']}  ({CONDITIONS[cond][0]})")
 
     # The Kindle shows the same Pokemon as the frame, laid out for its screen.
-    kindle = render_kindle(weather, cond, mons[0], get_sprite(mons[0], box=KINDLE_SPRITE), stamp)
-    kindle.save(OUT / "kindle.png", optimize=True)
-    print(f"kindle.png  {mons[0]['name']}")
+    # If it fails, the frame's pictures still publish as normal.
+    try:
+        kindle = render_kindle(weather, cond, mons[0], get_sprite(mons[0], box=KINDLE_SPRITE), stamp)
+        kindle.save(OUT / "kindle.png", optimize=True)
+        print(f"kindle.png  {mons[0]['name']}")
+    except Exception as e:
+        print(f"::warning::Kindle picture skipped: {e}")
 
     images = "".join(f'<p>{n}.png</p><img src="{n}.png" alt="{n}">' for n in names + ["kindle"])
     (OUT / "index.html").write_text(INDEX.format(stamp=stamp, label=CONDITIONS[cond][0], images=images))
