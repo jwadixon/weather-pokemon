@@ -20,6 +20,7 @@ Low-battery screen, made once and built into the frame's firmware:
 """
 import datetime as dt
 import json
+import sys
 import random
 import re
 from io import BytesIO
@@ -426,7 +427,10 @@ def render_fainted(mon, sprite):
 
 # ---------- Kindle (Paperwhite 1, portrait 758 x 1024) ----------
 KINDLE_W, KINDLE_H = 758, 1024
-KINDLE_SPRITE = 416     # largest sprite size; the window is 654 x 436
+KINDLE_SPRITE = 372     # largest sprite size; the window is 654 x 390
+# Strip left blank under the name. The Kindle draws its own battery there as
+# an HP bar (see kindle_hp_bar), since only the Kindle knows its charge.
+KINDLE_HP = (40, 638, 678, 44)   # x, y, width, height
 
 
 def render_kindle(weather, cond, mon, sprite, stamp):
@@ -446,7 +450,7 @@ def render_kindle(weather, cond, mon, sprite, stamp):
     d.text((x1 - d.textlength(up, font=f_up), 32), up, font=f_up, fill=DARK)
 
     # Sprite window, double border like the frame
-    top, bottom = 76, 536
+    top, bottom = 76, 490
     d.rectangle([x0, top, x1, bottom], outline=BLACK, width=5)
     inner = [x0 + 12, top + 12, x1 - 12, bottom - 12]
     d.rectangle(inner, outline=LIGHT, width=2)
@@ -468,7 +472,9 @@ def render_kindle(weather, cond, mon, sprite, stamp):
     y += 40
     name = mon["name"].upper()
     d.text((x0, y), name, font=fit(d, name, "bold", 72, w, smallest=40), fill=BLACK)
-    y += 92
+    y += 84
+    assert y == KINDLE_HP[1], y          # the Kindle draws the HP bar here
+    y += KINDLE_HP[3] + 12
 
     for px in range(x0, x1, 10):                       # dotted rule
         d.rectangle([px, y, px + 4, y + 3], fill=BLACK)
@@ -502,6 +508,36 @@ def render_kindle(weather, cond, mon, sprite, stamp):
     return to_four_greys(img).convert("L")
 
 
+def kindle_hp_bar(level):
+    """The Kindle's battery as a Game Boy HP bar, sized to the KINDLE_HP strip.
+    The Kindle can't run Python, so all 101 are made in advance and copied
+    onto it (python render_frame.py --hp-bars DIR)."""
+    _, _, w, h = KINDLE_HP
+    img = Image.new("RGB", (w, h), WHITE)
+    d = ImageDraw.Draw(img)
+    # "HP" tag, white on black like the battle screen
+    tag = font("bold", 26)
+    d.rounded_rectangle([0, 6, 62, h - 6], radius=6, fill=BLACK)
+    d.text((31 - d.textlength("HP", font=tag) / 2, 7), "HP", font=tag, fill=WHITE)
+    # the bar, filled dark when healthy, lighter as it drains, hatched when low
+    num = f"{level}/100"
+    f_num = font("bold", 30)
+    bx0, bx1 = 76, w - d.textlength("100/100", font=f_num) - 18
+    by0, by1 = 10, h - 10
+    d.rounded_rectangle([bx0, by0, bx1, by1], radius=12, outline=BLACK, width=4)
+    fx1 = bx0 + 6 + (bx1 - bx0 - 12) * level / 100
+    if level > 0:
+        shade = DARK if level > 50 else LIGHT
+        d.rounded_rectangle([bx0 + 6, by0 + 6, fx1, by1 - 6], radius=6, fill=shade)
+        if level <= 20:
+            for x in range(int(bx0 + 6), int(fx1), 8):
+                d.line([x, by1 - 6, x + 10, by0 + 6], fill=BLACK, width=3)
+            d.rectangle([fx1 + 1, by0 + 5, fx1 + 12, by1 - 5], fill=WHITE)
+            d.rounded_rectangle([bx0, by0, bx1, by1], radius=12, outline=BLACK, width=4)
+    d.text((w - d.textlength(num, font=f_num), 5), num, font=f_num, fill=BLACK)
+    return to_four_greys(img).convert("L")
+
+
 INDEX = """<!DOCTYPE html><html lang="en-GB"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Weather Pokemon frame</title>
@@ -513,6 +549,11 @@ display:block;margin:8px 0 24px;border:12px solid #222;image-rendering:pixelated
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--hp-bars":
+        out = Path(sys.argv[2]); out.mkdir(parents=True, exist_ok=True)
+        for level in range(101):
+            kindle_hp_bar(level).save(out / f"hp{level:03d}.png", optimize=True)
+        return
     CACHE.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(exist_ok=True)
 
